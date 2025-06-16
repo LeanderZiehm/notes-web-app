@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Text Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Lucida Console', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .tab-buttons {
+            display: flex;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e42;
+            padding: 0;
+        }
+
+        .tab-btn {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: #cccccc;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            background: #37373d;
+        }
+
+        .tab-btn.active {
+            background: #1e1e1e;
+            color: white;
+            border-bottom-color: #007acc;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .line-numbers {
+            width: 60px;
+            background: #1e1e1e;
+            border-right: 1px solid #3e3e42;
+            padding: 10px 5px;
+            font-size: 14px;
+            color: #858585;
+            user-select: none;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .editor {
+            flex: 1;
+            padding: 0;
+            overflow: auto;
+            font-size: 14px;
+            line-height: 1.5;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: 'Consolas', 'Monaco', 'Lucida Console', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            padding: 10px;
+        }
+
+        .editor:focus {
+            outline: none;
+        }
+
+        .line {
+            display: none; /* Hide individual line divs in favor of textarea */
+        }
+
+        .tag {
+            color: #569cd6;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .analytics-card {
+            background: #2d2d30;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #3e3e42;
+        }
+
+        .analytics-card h3 {
+            color: #569cd6;
+            margin-bottom: 10px;
+        }
+
+        .word-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .word-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .tag-item {
+            background: #569cd6;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .tag-item:hover {
+            background: #4a8cc7;
+        }
+
+
+
+        .status-bar {
+            height: 25px;
+            background: #00000017;
+            color: white;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            font-size: 12px;
+               justify-content: flex-end; /* This aligns items to the right */
+        }
+
+        .search-bar {
+            width: 100%;
+            padding: 8px;
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            color: #d4d4d4;
+            border-radius: 3px;
+            margin-bottom: 10px;
+        }
+
+        .search-bar:focus {
+            outline: none;
+            border-color: #0000001c;
+        }
+
+        .content-wrapper {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('editor')">Editor</button>
+            <button class="tab-btn" onclick="switchTab('todos')">To-Do List</button>
+            <button class="tab-btn" onclick="switchTab('analytics')">Analytics</button>
+            <button class="tab-btn" onclick="switchTab('tags')">Tags</button>
+        </div>
+
+        <div class="content-wrapper">
+            <div class="main-content">
+                <!-- Editor Tab -->
+                <div id="editor-tab" class="tab-content active">
+                    <div class="editor-container">
+                        <div class="line-numbers" id="lineNumbers"></div>
+                        <textarea class="editor" id="editor" placeholder="Start typing..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Todo Tab -->
+                <div id="todos-tab" class="tab-content">
+                    <h2>To-Do Items</h2>
+                    <input type="text" class="search-bar" placeholder="Filter todos..." onkeyup="filterTodos(this.value)">
+                    <div id="todoList"></div>
+                </div>
+
+                <!-- Analytics Tab -->
+                <div id="analytics-tab" class="tab-content">
+                    <h2>Analytics</h2>
+                    <div class="analytics-grid">
+                        <div class="analytics-card">
+                            <h3>Statistics</h3>
+                            <div id="stats"></div>
+                        </div>
+                        <div class="analytics-card">
+                            <h3>Top Words</h3>
+                            <div class="word-list" id="wordList"></div>
+                        </div>
+                    </div>
+                    <div class="analytics-card">
+                        <h3>Tags Usage</h3>
+                        <div class="tag-list" id="analyticsTagList"></div>
+                    </div>
+                </div>
+
+                <!-- Tags Tab -->
+                <div id="tags-tab" class="tab-content">
+                    <h2>Browse by Tags</h2>
+                    <div class="tag-list" id="tagList"></div>
+                    <div id="taggedLines"></div>
+                </div>
+
+                <div class="status-bar" id="statusBar">
+                    Ready
+                </div>
+            </div>
+
+            <div class="sidebar" id="sidebar" style="display: none;">
+                <div id="sidebarContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let editorData = {
+            content: '',
+            lines: [],
+            lineMetadata: new Map() // Store metadata for each line
+        };
+        let analytics = {};
+        let autoSaveTimeout;
+        let currentLineCount = 0;
+
+        // Initialize the application
+        async function init() {
+            await loadData();
+            setupEditor();
+            await loadAnalytics();
+            updateLineNumbers();
+            updateStatus();
+            startAutoSave();
+        }
+
+        // Load data from server
+        async function loadData() {
+            try {
+                const response = await fetch('/api/lines');
+                const lines = await response.json();
+                
+                // Convert lines array to editor content
+                editorData.content = lines.map(line => line.content).join('\n');
+                editorData.lines = lines;
+                
+                // Store metadata for each line
+                lines.forEach((line, index) => {
+                    editorData.lineMetadata.set(index, {
+                        id: line.id,
+                        createdAt: line.createdAt,
+                        editedAt: line.editedAt,
+                        tags: line.tags || []
+                    });
+                });
+                
+                document.getElementById('editor').value = editorData.content;
+                currentLineCount = lines.length;
+            } catch (error) {
+                console.error('Error loading data:', error);
+                updateStatus('Error loading data');
+            }
+        }
+
+        // Setup editor event listeners
+        function setupEditor() {
+            const editor = document.getElementById('editor');
+            
+            // Handle text changes
+            editor.addEventListener('input', handleEditorInput);
+            editor.addEventListener('scroll', syncScroll);
+            
+            // Handle keyboard shortcuts
+            editor.addEventListener('keydown', handleKeyDown);
+            
+            // Focus the editor
+            editor.focus();
+        }
+
+        // Handle editor input changes
+        function handleEditorInput(e) {
+            const editor = e.target;
+            const content = editor.value;
+            const lines = content.split('\n');
+            
+            // Detect new lines
+            if (lines.length > currentLineCount) {
+                // New line(s) created
+                const newLinesCount = lines.length - currentLineCount;
+                for (let i = 0; i < newLinesCount; i++) {
+                    const lineIndex = currentLineCount + i;
+                    editorData.lineMetadata.set(lineIndex, {
+                        id: Date.now() + i, // Temporary ID
+                        createdAt: new Date().toISOString(),
+                        editedAt: new Date().toISOString(),
+                        tags: extractTags(lines[lineIndex] || '')
+                    });
+                }
+            } else if (lines.length < currentLineCount) {
+                // Line(s) deleted
+                // Remove metadata for deleted lines
+                for (let i = lines.length; i < currentLineCount; i++) {
+                    editorData.lineMetadata.delete(i);
+                }
+                // Reindex remaining lines
+                const newMetadata = new Map();
+                lines.forEach((line, index) => {
+                    const oldMetadata = editorData.lineMetadata.get(index);
+                    if (oldMetadata) {
+                        newMetadata.set(index, {
+                            ...oldMetadata,
+                            editedAt: new Date().toISOString(),
+                            tags: extractTags(line)
+                        });
+                    } else {
+                        newMetadata.set(index, {
+                            id: Date.now() + index,
+                            createdAt: new Date().toISOString(),
+                            editedAt: new Date().toISOString(),
+                            tags: extractTags(line)
+                        });
+                    }
+                });
+                editorData.lineMetadata = newMetadata;
+            } else {
+                // Content modified, update edited timestamps
+                lines.forEach((line, index) => {
+                    const metadata = editorData.lineMetadata.get(index);
+                    if (metadata) {
+                        metadata.editedAt = new Date().toISOString();
+                        metadata.tags = extractTags(line);
+                    }
+                });
+            }
+            
+            currentLineCount = lines.length;
+            editorData.content = content;
+            
+            updateLineNumbers();
+            scheduleAutoSave();
+            updateStatus();
+        }
+
+        // Handle keyboard shortcuts
+        function handleKeyDown(e) {
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveData();
+            } else if (e.ctrlKey && e.key === 'n') {
+                e.preventDefault();
+                newFile();
+            }
+        }
+
+        // Update line numbers
+        function updateLineNumbers() {
+            const editor = document.getElementById('editor');
+            const lineNumbers = document.getElementById('lineNumbers');
+            const lines = editor.value.split('\n');
+            
+            lineNumbers.innerHTML = '';
+            lines.forEach((line, index) => {
+                const lineNumDiv = document.createElement('div');
+                lineNumDiv.textContent = index + 1;
+                lineNumDiv.style.height = '21px'; // Match line height
+                lineNumDiv.style.lineHeight = '21px';
+                
+                // Add visual indicators for tagged lines
+                const metadata = editorData.lineMetadata.get(index);
+                if (metadata && metadata.tags.length > 0) {
+                    if (metadata.tags.includes('todo')) {
+                        lineNumDiv.style.backgroundColor = '#3a2a00';
+                        lineNumDiv.style.borderLeft = '3px solid #ffa500';
+                    } else if (metadata.tags.includes('done')) {
+                        lineNumDiv.style.backgroundColor = '#2a3a2a';
+                        lineNumDiv.style.borderLeft = '3px solid #00aa00';
+                    } else if (metadata.tags.includes('important')) {
+                        lineNumDiv.style.backgroundColor = '#3a2a2a';
+                        lineNumDiv.style.borderLeft = '3px solid #ff6666';
+                    } else if (metadata.tags.includes('note')) {
+                        lineNumDiv.style.backgroundColor = '#2a2a3a';
+                        lineNumDiv.style.borderLeft = '3px solid #6666ff';
+                    }
+                }
+                
+                lineNumbers.appendChild(lineNumDiv);
+            });
+        }
+
+        // Sync scroll between editor and line numbers
+        function syncScroll() {
+            const editor = document.getElementById('editor');
+            const lineNumbers = document.getElementById('lineNumbers');
+            lineNumbers.scrollTop = editor.scrollTop;
+        }
+
+        // Extract tags from content
+        function extractTags(content) {
+            const matches = content.match(/#(\w+)/g);
+            return matches ? matches.map(tag => tag.substring(1).toLowerCase()) : [];
+        }
+
+        // Schedule auto-save
+        function scheduleAutoSave() {
+            if (autoSaveTimeout) {
+                clearTimeout(autoSaveTimeout);
+            }
+            autoSaveTimeout = setTimeout(saveData, 2000); // Auto-save after 2 seconds of inactivity
+        }
+
+        // Start auto-save interval
+        function startAutoSave() {
+            setInterval(saveData, 30000); // Save every 30 seconds
+        }
+
+        // Save data to server
+        async function saveData() {
+            try {
+                const lines = editorData.content.split('\n');
+                const dataToSave = lines.map((content, index) => {
+                    const metadata = editorData.lineMetadata.get(index);
+                    return {
+                        id: metadata ? metadata.id : Date.now() + index,
+                        content: content,
+                        createdAt: metadata ? metadata.createdAt : new Date().toISOString(),
+                        editedAt: new Date().toISOString(),
+                        tags: extractTags(content)
+                    };
+                });
+
+                // Clear existing data and save new data
+                const response = await fetch('/api/lines/bulk', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ lines: dataToSave })
+                });
+
+                if (response.ok) {
+                    await loadAnalytics();
+                    updateStatus('Saved');
+                } else {
+                    updateStatus('Error saving');
+                }
+            } catch (error) {
+                console.error('Error saving data:', error);
+                updateStatus('Error saving');
+            }
+        }
+
+        // Load analytics from server
+        async function loadAnalytics() {
+            try {
+                const response = await fetch('/api/analytics');
+                analytics = await response.json();
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+            }
+        }
+
+        // New file
+        function newFile() {
+            if (confirm('Create new file? Unsaved changes will be lost.')) {
+                document.getElementById('editor').value = '';
+                editorData.content = '';
+                editorData.lineMetadata.clear();
+                currentLineCount = 0;
+                updateLineNumbers();
+                updateStatus('New file');
+            }
+        }
+
+        // Switch tabs
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+
+            // Save before switching tabs
+            if (tabName !== 'editor') {
+                saveData();
+            }
+
+            // Update specific tab content
+            if (tabName === 'todos') {
+                updateTodoList();
+            } else if (tabName === 'analytics') {
+                updateAnalytics();
+
+                
+            } else if (tabName === 'tags') {
+                updateTagsList();
+            }
+        }
+
+        // Update todo list
+        function updateTodoList() {
+            const lines = editorData.content.split('\n');
+            const todoLines = lines.filter(line => extractTags(line).includes('todo'));
+            const todoList = document.getElementById('todoList');
+            
+            todoList.innerHTML = '';
+            todoLines.forEach((line, index) => {
+                const todoDiv = document.createElement('div');
+                todoDiv.className = 'line todo';
+                todoDiv.innerHTML = `
+                    ${processTagsInContent(line)}
+                    <div class="line-meta">
+                        Line ${lines.indexOf(line) + 1}
+                    </div>
+                `;
+                todoList.appendChild(todoDiv);
+            });
+
+            if (todoLines.length === 0) {
+                todoList.innerHTML = '<p>No todo items found. Use #todo tag to create one!</p>';
+            }
+        }
+
+        // Process content to highlight tags
+        function processTagsInContent(content) {
+            return content.replace(/#(\w+)/g, '<span class="tag">#$1</span>');
+        }
+
+        // Filter todos
+        function filterTodos(query) {
+            const todoItems = document.querySelectorAll('#todoList .line');
+            todoItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query.toLowerCase()) ? 'block' : 'none';
+            });
+        }
+
+        // Update analytics
+        function updateAnalytics() {
+            const stats = document.getElementById('stats');
+            const wordList = document.getElementById('wordList');
+            const analyticsTagList = document.getElementById('analyticsTagList');
+
+            // Stats
+            stats.innerHTML = `
+                <p><strong>Total Lines:</strong> ${analytics.totalLines || 0}</p>
+                <p><strong>Total Words:</strong> ${analytics.totalWords || 0}</p>
+                <p><strong>Unique Words:</strong> ${analytics.wordCount ? analytics.wordCount.length : 0}</p>
+                <p><strong>Tags Used:</strong> ${Object.keys(analytics.tagCount || {}).length}</p>
+            `;
+
+            // Word list
+            wordList.innerHTML = '';
+            if (analytics.wordCount) {
+                analytics.wordCount.slice(0, 20).forEach(([word, count]) => {
+                    const wordDiv = document.createElement('div');
+                    wordDiv.className = 'word-item';
+                    wordDiv.innerHTML = `<span>${word}</span><span>${count}</span>`;
+                    wordList.appendChild(wordDiv);
+                });
+            }
+
+            // Tags
+            analyticsTagList.innerHTML = '';
+            if (analytics.tagCount) {
+                Object.entries(analytics.tagCount).forEach(([tag, count]) => {
+                    const tagDiv = document.createElement('div');
+                    tagDiv.className = 'tag-item';
+                    tagDiv.textContent = `#${tag} (${count})`;
+                    analyticsTagList.appendChild(tagDiv);
+                });
+            }
+        }
+
+        // Update tags list
+        function updateTagsList() {
+            const tagList = document.getElementById('tagList');
+            tagList.innerHTML = '';
+
+            if (analytics.tagCount) {
+                Object.entries(analytics.tagCount).forEach(([tag, count]) => {
+                    const tagDiv = document.createElement('div');
+                    tagDiv.className = 'tag-item';
+                    tagDiv.textContent = `#${tag} (${count})`;
+                    tagList.appendChild(tagDiv);
+                });
+            }
+        }
+
+        // Update status bar
+        function updateStatus(message = null) {
+            const statusBar = document.getElementById('statusBar');
+            const lines = editorData.content.split('\n');
+            const words = editorData.content.split(/\s+/).filter(w => w.length > 0);
+            
+            if (message) {
+                statusBar.textContent = `${message} | Lines: ${lines.length} | Words: ${words.length}`;
+                setTimeout(() => updateStatus(), 3000);
+            } else {
+                statusBar.textContent = `Lines: ${lines.length} | Words: ${words.length} | Ready`;
+            }
+        }
+
+        // Initialize the app
+        init();
+ 
+    // Editing();
+            // }
+
+        //     const lineDiv = document.querySelector(`[data-id="${id}"]`);
+        //     const line = lines.find(l => l.id === id);
+            
+        //     currentEditingId = id;
+        //     lineDiv.classList.add('editing');
+        //     lineDiv.contentEditable = true;
+        //     lineDiv.textContent = line.content; // Remove HTML formatting for editing
+        //     lineDiv.focus();
+
+        //     // Place cursor at end
+        //     const range = document.createRange();
+        //     const sel = window.getSelection();
+        //     range.selectNodeContents(lineDiv);
+        //     range.collapse(false);
+        //     sel.removeAllRanges();
+        //     sel.addRange(range);
+        // }
+
+        // Handle keydown events in lines
+        function handleLineKeydown(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                finishEditing();
+                addNewLine();
+            } else if (e.key === 'Escape') {
+                cancelEditing();
+            } else if (e.key === 'Delete' && e.ctrlKey) {
+                e.preventDefault();
+                deleteLine(currentEditingId);
+            }
+        }
+
+        // Finish editing a line
+        async function finishEditing() {
+            if (!currentEditingId) return;
+
+            const lineDiv = document.querySelector(`[data-id="${currentEditingId}"]`);
+            const newContent = lineDiv.textContent.trim();
+
+            if (newContent === '') {
+                deleteLine(currentEditingId);
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/lines/${currentEditingId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: newContent })
+                });
+
+                if (response.ok) {
+                    const updatedLine = await response.json();
+                    const lineIndex = lines.findIndex(l => l.id === currentEditingId);
+                    lines[lineIndex] = updatedLine;
+                }
+            } catch (error) {
+                console.error('Error updating line:', error);
+                updateStatus('Error updating line');
+            }
+
+            lineDiv.classList.remove('editing');
+            lineDiv.contentEditable = false;
+            currentEditingId = null;
+
+            await loadAnalytics();
+            renderEditor();
+            updateAllTabs();
+        }
+
+        // Cancel editing
+        function cancelEditing() {
+            if (!currentEditingId) return;
+
+            const lineDiv = document.querySelector(`[data-id="${currentEditingId}"]`);
+            lineDiv.classList.remove('editing');
+            lineDiv.contentEditable = false;
+            currentEditingId = null;
+            renderEditor();
+        }
+
+        // Add new line
+        async function addNewLine() {
+            try {
+                const response = await fetch('/api/lines', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: '' })
+                });
+
+                if (response.ok) {
+                    const newLine = await response.json();
+                    lines.push(newLine);
+                    renderEditor();
+                    editLine(newLine.id);
+                    await loadAnalytics();
+                    updateAllTabs();
+                }
+            } catch (error) {
+                console.error('Error adding line:', error);
+                updateStatus('Error adding line');
+            }
+        }
+
+        // Delete line
+        async function deleteLine(id) {
+            if (!confirm('Delete this line?')) return;
+
+            try {
+                const response = await fetch(`/api/lines/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    lines = lines.filter(l => l.id !== id);
+                    currentEditingId = null;
+                    await loadAnalytics();
+                    renderEditor();
+                    updateAllTabs();
+                }
+            } catch (error) {
+                console.error('Error deleting line:', error);
+                updateStatus('Error deleting line');
+            }
+        }
+
+        // Switch tabs
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+
+            // Update specific tab content
+            if (tabName === 'todos') {
+                updateTodoList();
+            } else if (tabName === 'analytics') {
+                updateAnalytics();
+            } else if (tabName === 'tags') {
+                updateTagsList();
+            }
+        }
+
+        // Update todo list
+        function updateTodoList() {
+            const todoLines = lines.filter(line => extractTags(line.content).includes('todo'));
+            const todoList = document.getElementById('todoList');
+            
+            todoList.innerHTML = '';
+            todoLines.forEach(line => {
+                const todoDiv = document.createElement('div');
+                todoDiv.className = 'line todo';
+                todoDiv.innerHTML = `
+                    ${processTagsInContent(line.content)}
+                    <div class="line-meta">
+                        Created: ${new Date(line.createdAt).toLocaleString()}
+                        ${line.createdAt !== line.editedAt ? `<br>Edited: ${new Date(line.editedAt).toLocaleString()}` : ''}
+                    </div>
+                `;
+                todoDiv.addEventListener('click', () => {
+                    switchTab('editor');
+                    document.querySelector('.tab-btn').click();
+                    setTimeout(() => editLine(line.id), 100);
+                });
+                todoList.appendChild(todoDiv);
+            });
+
+            if (todoLines.length === 0) {
+                todoList.innerHTML = '<p>No todo items found. Use #todo tag to create one!</p>';
+            }
+        }
+
+        // Filter todos
+        function filterTodos(query) {
+            const todoItems = document.querySelectorAll('#todoList .line');
+            todoItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(query.toLowerCase()) ? 'block' : 'none';
+            });
+        }
+
+        // Update analytics
+        function updateAnalytics() {
+            const stats = document.getElementById('stats');
+            const wordList = document.getElementById('wordList');
+            const analyticsTagList = document.getElementById('analyticsTagList');
+
+            // Stats
+            stats.innerHTML = `
+                <p><strong>Total Lines:</strong> ${analytics.totalLines || 0}</p>
+                <p><strong>Total Words:</strong> ${analytics.totalWords || 0}</p>
+                <p><strong>Unique Words:</strong> ${analytics.wordCount ? analytics.wordCount.length : 0}</p>
+                <p><strong>Tags Used:</strong> ${Object.keys(analytics.tagCount || {}).length}</p>
+            `;
+
+            // Word list
+            wordList.innerHTML = '';
+            if (analytics.wordCount) {
+                analytics.wordCount.slice(0, 20).forEach(([word, count]) => {
+                    const wordDiv = document.createElement('div');
+                    wordDiv.className = 'word-item';
+                    wordDiv.innerHTML = `<span>${word}</span><span>${count}</span>`;
+                    wordList.appendChild(wordDiv);
+                });
+            }
+
+            // Tags
+            analyticsTagList.innerHTML = '';
+            if (analytics.tagCount) {
+                Object.entries(analytics.tagCount).forEach(([tag, count]) => {
+                    const tagDiv = document.createElement('div');
+                    tagDiv.className = 'tag-item';
+                    tagDiv.textContent = `#${tag} (${count})`;
+                    tagDiv.onclick = () => showTaggedLines(tag);
+                    analyticsTagList.appendChild(tagDiv);
+                });
+            }
+        }
+
+        // Update tags list
+        function updateTagsList() {
+            const tagList = document.getElementById('tagList');
+            tagList.innerHTML = '';
+
+            if (analytics.tagCount) {
+                Object.entries(analytics.tagCount).forEach(([tag, count]) => {
+                    const tagDiv = document.createElement('div');
+                    tagDiv.className = 'tag-item';
+                    tagDiv.textContent = `#${tag} (${count})`;
+                    tagDiv.onclick = () => showTaggedLines(tag);
+                    tagList.appendChild(tagDiv);
+                });
+            }
+        }
+
+        // Show lines with specific tag
+        async function showTaggedLines(tag) {
+            try {
+                const response = await fetch(`/api/tags/${tag}`);
+                const taggedLines = await response.json();
+                
+                const taggedLinesDiv = document.getElementById('taggedLines');
+                taggedLinesDiv.innerHTML = `<h3>Lines tagged with #${tag}</h3>`;
+                
+                taggedLines.forEach(line => {
+                    const lineDiv = document.createElement('div');
+                    lineDiv.className = `line ${getLineClass(line.content)}`;
+                    lineDiv.innerHTML = `
+                        ${processTagsInContent(line.content)}
+                        <div class="line-meta">
+                            Created: ${new Date(line.createdAt).toLocaleString()}
+                            ${line.createdAt !== line.editedAt ? `<br>Edited: ${new Date(line.editedAt).toLocaleString()}` : ''}
+                        </div>
+                    `;
+                    lineDiv.addEventListener('click', () => {
+                        switchTab('editor');
+                        document.querySelector('.tab-btn').click();
+                        setTimeout(() => editLine(line.id), 100);
+                    });
+                    taggedLinesDiv.appendChild(lineDiv);
+                });
+            } catch (error) {
+                console.error('Error loading tagged lines:', error);
+            }
+        }
+
+        // Update all tabs
+        function updateAllTabs() {
+            updateTodoList();
+            updateAnalytics();
+            updateTagsList();
+        }
+
+        // Update status bar
+        function updateStatus(message = null) {
+            const statusBar = document.getElementById('statusBar');
+            if (message) {
+                statusBar.textContent = message;
+            } else {
+                statusBar.textContent = `${lines.length} lines | Ready`;
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                addNewLine();
+            } else if (e.key === 'Escape' && currentEditingId) {
+                cancelEditing();
+            }
+        });
+
+        // Initialize the app
+        init();
+    </script>
+</body>
+</html>

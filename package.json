@@ -1,0 +1,25 @@
+{
+  "name": "smart-notepad-web-app",
+  "version": "1.0.0",
+  "description": "A self-hosted text editor with timestamped lines, tags, and analytics",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "keywords": [
+    "text-editor",
+    "notepad",
+    "notes",
+    "tags",
+    "analytics"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
