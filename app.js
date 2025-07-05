@@ -2,169 +2,161 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const app = express();
-const PORT = 5007;
+const PORT = 3000;
 
 // Middleware
 app.use(express.json());
 app.use(express.static('public'));
 
-// Data file path
-const DATA_FILE = 'notes.json';
+// Directory to store text files
+const FILES_DIR = 'files';
 
-// Initialize data structure
-const initializeData = async () => {
+// Initialize files directory
+const initializeFilesDir = async () => {
   try {
-    await fs.access(DATA_FILE);
+    await fs.access(FILES_DIR);
   } catch (error) {
-    // File doesn't exist, create it
-    const initialData = {
-      lines: [],
-      nextId: 1
-    };
-    await fs.writeFile(DATA_FILE, JSON.stringify(initialData, null, 2));
+    await fs.mkdir(FILES_DIR, { recursive: true });
   }
 };
 
-// Read data from JSON file
-const readData = async () => {
+// Get list of all files
+app.get('/api/files', async (req, res) => {
   try {
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
+    const files = await fs.readdir(FILES_DIR);
+    const fileList = files
+      .filter(file => file.endsWith('.txt'))
+      .map(file => ({
+        name: file,
+        displayName: file.replace('.txt', '')
+      }));
+    res.json(fileList);
   } catch (error) {
-    console.error('Error reading data:', error);
-    return { lines: [], nextId: 1 };
+    console.error('Error reading files:', error);
+    res.status(500).json({ error: 'Error reading files' });
   }
-};
+});
 
-// Write data to JSON file
-const writeData = async (data) => {
+// Get file content
+app.get('/api/files/:filename', async (req, res) => {
   try {
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('Error writing data:', error);
-  }
-};
-
-// Get all lines
-app.get('/api/lines', async (req, res) => {
-  const data = await readData();
-  res.json(data.lines);
-});
-
-// Add new line
-app.post('/api/lines', async (req, res) => {
-  const { content } = req.body;
-  const data = await readData();
-  
-  const newLine = {
-    id: data.nextId++,
-    content: content,
-    createdAt: new Date().toISOString(),
-    editedAt: new Date().toISOString(),
-    tags: extractTags(content)
-  };
-  
-  data.lines.push(newLine);
-  await writeData(data);
-  res.json(newLine);
-});
-
-// Update line
-app.put('/api/lines/:id', async (req, res) => {
-  const { id } = req.params;
-  const { content } = req.body;
-  const data = await readData();
-  
-  const lineIndex = data.lines.findIndex(line => line.id === parseInt(id));
-  if (lineIndex === -1) {
-    return res.status(404).json({ error: 'Line not found' });
-  }
-  
-  data.lines[lineIndex].content = content;
-  data.lines[lineIndex].editedAt = new Date().toISOString();
-  data.lines[lineIndex].tags = extractTags(content);
-  
-  await writeData(data);
-  res.json(data.lines[lineIndex]);
-});
-
-// Delete line
-app.delete('/api/lines/:id', async (req, res) => {
-  const { id } = req.params;
-  const data = await readData();
-  
-  const lineIndex = data.lines.findIndex(line => line.id === parseInt(id));
-  if (lineIndex === -1) {
-    return res.status(404).json({ error: 'Line not found' });
-  }
-  
-  data.lines.splice(lineIndex, 1);
-  await writeData(data);
-  res.json({ success: true });
-});
-
-// Get analytics
-app.get('/api/analytics', async (req, res) => {
-  const data = await readData();
-  const wordCount = {};
-  const tagCount = {};
-  
-  data.lines.forEach(line => {
-    // Count words
-    const words = line.content.toLowerCase().match(/\b\w+\b/g) || [];
-    words.forEach(word => {
-      wordCount[word] = (wordCount[word] || 0) + 1;
-    });
+    const filename = req.params.filename;
+    const filePath = path.join(FILES_DIR, filename);
     
-    // Count tags
-    line.tags.forEach(tag => {
-      tagCount[tag] = (tagCount[tag] || 0) + 1;
-    });
-  });
-  
-  res.json({
-    totalLines: data.lines.length,
-    wordCount: Object.entries(wordCount)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 50), // Top 50 words
-    tagCount,
-    totalWords: Object.values(wordCount).reduce((sum, count) => sum + count, 0)
-  });
-});
-
-// Get lines by tag
-app.get('/api/tags/:tag', async (req, res) => {
-  const { tag } = req.params;
-  const data = await readData();
-  
-  const taggedLines = data.lines.filter(line => 
-    line.tags.includes(tag.toLowerCase())
-  );
-  
-  res.json(taggedLines);
-});
-
-// Extract tags from content
-function extractTags(content) {
-  const tagRegex = /#(\w+)/g;
-  const tags = [];
-  let match;
-  
-  while ((match = tagRegex.exec(content)) !== null) {
-    tags.push(match[1].toLowerCase());
+    // Security check - ensure file is within FILES_DIR
+    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
+    const content = await fs.readFile(filePath, 'utf8');
+    res.json({ content });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      res.status(404).json({ error: 'File not found' });
+    } else {
+      console.error('Error reading file:', error);
+      res.status(500).json({ error: 'Error reading file' });
+    }
   }
-  
-  return [...new Set(tags)]; // Remove duplicates
-}
+});
+
+// Save file content
+app.post('/api/files/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const { content } = req.body;
+    
+    // Ensure filename ends with .txt
+    const safeFilename = filename.endsWith('.txt') ? filename : `${filename}.txt`;
+    const filePath = path.join(FILES_DIR, safeFilename);
+    
+    // Security check - ensure file is within FILES_DIR
+    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
+    await fs.writeFile(filePath, content, 'utf8');
+    res.json({ 
+      success: true, 
+      message: 'File saved successfully',
+      filename: safeFilename
+    });
+  } catch (error) {
+    console.error('Error saving file:', error);
+    res.status(500).json({ error: 'Error saving file' });
+  }
+});
+
+// Delete file
+app.delete('/api/files/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(FILES_DIR, filename);
+    
+    // Security check - ensure file is within FILES_DIR
+    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
+    await fs.unlink(filePath);
+    res.json({ success: true, message: 'File deleted successfully' });
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      res.status(404).json({ error: 'File not found' });
+    } else {
+      console.error('Error deleting file:', error);
+      res.status(500).json({ error: 'Error deleting file' });
+    }
+  }
+});
+
+// Create new file
+app.post('/api/files', async (req, res) => {
+  try {
+    const { filename, content = '' } = req.body;
+    
+    if (!filename) {
+      return res.status(400).json({ error: 'Filename is required' });
+    }
+    
+    // Ensure filename ends with .txt
+    const safeFilename = filename.endsWith('.txt') ? filename : `${filename}.txt`;
+    const filePath = path.join(FILES_DIR, safeFilename);
+    
+    // Security check - ensure file is within FILES_DIR
+    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
+    
+    // Check if file already exists
+    try {
+      await fs.access(filePath);
+      return res.status(409).json({ error: 'File already exists' });
+    } catch (error) {
+      // File doesn't exist, which is what we want
+    }
+    
+    await fs.writeFile(filePath, content, 'utf8');
+    res.json({ 
+      success: true, 
+      message: 'File created successfully',
+      filename: safeFilename
+    });
+  } catch (error) {
+    console.error('Error creating file:', error);
+    res.status(500).json({ error: 'Error creating file' });
+  }
+});
 
 // Serve the main HTML file
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Initialize data and start server
-initializeData().then(() => {
+// Initialize and start server
+initializeFilesDir().then(() => {
   app.listen(PORT, () => {
     console.log(`Text Editor server running on http://localhost:${PORT}`);
+    console.log(`Files will be stored in: ${path.resolve(FILES_DIR)}`);
   });
 });

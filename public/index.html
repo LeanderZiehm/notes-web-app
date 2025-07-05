@@ -21,7 +21,54 @@
 
         .container {
             display: flex;
+            flex-direction: column;
             height: 100vh;
+        }
+
+        .toolbar {
+            background: #37474f;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid #455a64;
+        }
+
+        .toolbar button {
+            background: #546e7a;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .toolbar button:hover {
+            background: #607d8b;
+        }
+
+        .toolbar input {
+            background: #546e7a;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .toolbar select {
+            background: #546e7a;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
         }
 
         .line-numbers {
@@ -51,15 +98,7 @@
             tab-size: 4;
         }
 
-        .editor:focus {
-            outline: none;
-        }
-
         .status-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
             height: 24px;
             background: #37474f;
             color: #90a4ae;
@@ -73,55 +112,43 @@
 
         .line-number {
             display: block;
-            height: 22.4px; /* Match line height */
+            height: 22.4px;
             line-height: 22.4px;
             text-align: right;
             padding-right: 10px;
         }
 
-        /* Scrollbar styling */
-        .editor::-webkit-scrollbar {
-            width: 12px;
+        .current-file {
+            color: #81c784;
+            font-weight: bold;
         }
 
-        .editor::-webkit-scrollbar-track {
-            background: #37474f;
-        }
-
-        .editor::-webkit-scrollbar-thumb {
-            background: #546e7a;
-            border-radius: 6px;
-        }
-
-        .editor::-webkit-scrollbar-thumb:hover {
-            background: #607d8b;
-        }
-
-        .line-numbers::-webkit-scrollbar {
-            width: 0;
-        }
-
-        /* Selection styling */
-        .editor::selection {
-            background: #3f51b5;
-            color: white;
-        }
-
-        /* Current line highlight */
-        .editor:focus {
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        .unsaved {
+            color: #ffb74d;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="line-numbers" id="lineNumbers"></div>
-        <textarea class="editor" id="editor" placeholder="Start typing..." spellcheck="false"></textarea>
-    </div>
-    
-    <div class="status-bar">
-        <span id="statusLeft">Ready</span>
-        <span id="statusRight">Lines: 1 | Words: 0 | Characters: 0</span>
+        <div class="toolbar">
+            <button onclick="newFile()">New</button>
+            <select id="fileSelect" onchange="loadSelectedFile()">
+                <option value="">Select a file...</option>
+            </select>
+            <input type="text" id="filenameInput" placeholder="Enter filename..." style="width: 200px;">
+            <button onclick="saveFile()">Save</button>
+            <button onclick="deleteFile()">Delete</button>
+        </div>
+        
+        <div class="editor-container">
+            <div class="line-numbers" id="lineNumbers"></div>
+            <textarea class="editor" id="editor" placeholder="Start typing..." spellcheck="false"></textarea>
+        </div>
+        
+        <div class="status-bar">
+            <span id="statusLeft">Ready</span>
+            <span id="statusRight">Lines: 1 | Words: 0 | Characters: 0</span>
+        </div>
     </div>
 
     <script>
@@ -129,13 +156,16 @@
         const lineNumbers = document.getElementById('lineNumbers');
         const statusLeft = document.getElementById('statusLeft');
         const statusRight = document.getElementById('statusRight');
+        const fileSelect = document.getElementById('fileSelect');
+        const filenameInput = document.getElementById('filenameInput');
         
+        let currentFile = null;
+        let hasUnsavedChanges = false;
         let autoSaveTimeout;
-        let saveStatus = 'Ready';
 
         // Initialize editor
-        function init() {
-            loadContent();
+        async function init() {
+            await loadFileList();
             updateLineNumbers();
             updateStatus();
             setupEventListeners();
@@ -148,15 +178,18 @@
             editor.addEventListener('scroll', syncScroll);
             editor.addEventListener('keydown', handleKeyDown);
             
-            // Auto-save on blur
-            editor.addEventListener('blur', saveContent);
-            
             // Save on page unload
-            window.addEventListener('beforeunload', saveContent);
+            window.addEventListener('beforeunload', (e) => {
+                if (hasUnsavedChanges) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            });
         }
 
         // Handle input changes
         function handleInput() {
+            hasUnsavedChanges = true;
             updateLineNumbers();
             updateStatus();
             scheduleAutoSave();
@@ -168,7 +201,7 @@
                 switch(e.key) {
                     case 's':
                         e.preventDefault();
-                        saveContent();
+                        saveFile();
                         break;
                     case 'n':
                         e.preventDefault();
@@ -176,17 +209,8 @@
                         break;
                     case 'o':
                         e.preventDefault();
-                        openFile();
-                        break;
-                    case 'a':
-                        e.preventDefault();
-                        editor.select();
-                        break;
-                    case 'z':
-                        if (e.shiftKey) {
-                            e.preventDefault();
-                            document.execCommand('redo');
-                        }
+                        // Focus file select
+                        fileSelect.focus();
                         break;
                 }
             }
@@ -221,6 +245,158 @@
             }
         }
 
+        // Load file list
+        async function loadFileList() {
+            try {
+                const response = await fetch('/api/files');
+                const files = await response.json();
+                
+                fileSelect.innerHTML = '<option value="">Select a file...</option>';
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file.name;
+                    option.textContent = file.displayName;
+                    fileSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading file list:', error);
+                setStatus('Error loading files');
+            }
+        }
+
+        // Load selected file
+        async function loadSelectedFile() {
+            const filename = fileSelect.value;
+            if (!filename) return;
+            
+            if (hasUnsavedChanges) {
+                if (!confirm('You have unsaved changes. Load file anyway?')) {
+                    fileSelect.value = currentFile || '';
+                    return;
+                }
+            }
+            
+            try {
+                const response = await fetch(`/api/files/${filename}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    editor.value = data.content;
+                    currentFile = filename;
+                    filenameInput.value = filename.replace('.txt', '');
+                    hasUnsavedChanges = false;
+                    updateLineNumbers();
+                    updateStatus();
+                    setStatus('File loaded');
+                } else {
+                    setStatus('Error loading file');
+                }
+            } catch (error) {
+                console.error('Error loading file:', error);
+                setStatus('Error loading file');
+            }
+        }
+
+        // Save file
+        async function saveFile() {
+            const filename = filenameInput.value.trim();
+            if (!filename) {
+                alert('Please enter a filename');
+                filenameInput.focus();
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/files/${filename}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: editor.value })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentFile = data.filename;
+                    hasUnsavedChanges = false;
+                    await loadFileList();
+                    fileSelect.value = currentFile;
+                    setStatus('File saved');
+                } else {
+                    setStatus(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error saving file:', error);
+                setStatus('Error saving file');
+            }
+        }
+
+        // Delete file
+        async function deleteFile() {
+            const filename = fileSelect.value;
+            if (!filename) {
+                alert('Please select a file to delete');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/files/${filename}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (currentFile === filename) {
+                        newFile();
+                    }
+                    await loadFileList();
+                    setStatus('File deleted');
+                } else {
+                    setStatus(`Error: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error deleting file:', error);
+                setStatus('Error deleting file');
+            }
+        }
+
+        // New file
+        function newFile() {
+            if (hasUnsavedChanges) {
+                if (!confirm('You have unsaved changes. Create new file anyway?')) {
+                    return;
+                }
+            }
+            
+            editor.value = '';
+            currentFile = null;
+            filenameInput.value = '';
+            fileSelect.value = '';
+            hasUnsavedChanges = false;
+            updateLineNumbers();
+            updateStatus();
+            setStatus('New file');
+            editor.focus();
+        }
+
+        // Schedule auto-save
+        function scheduleAutoSave() {
+            if (autoSaveTimeout) {
+                clearTimeout(autoSaveTimeout);
+            }
+            if (currentFile) {
+                autoSaveTimeout = setTimeout(() => {
+                    saveFile();
+                }, 3000); // Auto-save after 3 seconds
+            }
+        }
+
         // Update line numbers
         function updateLineNumbers() {
             const lines = editor.value.split('\n');
@@ -235,107 +411,36 @@
             }
         }
 
-        // Sync scroll between editor and line numbers
+        // Sync scroll
         function syncScroll() {
             lineNumbers.scrollTop = editor.scrollTop;
         }
 
-        // Update status bar
+        // Update status
         function updateStatus() {
             const content = editor.value;
             const lines = content.split('\n').length;
             const words = content.trim() ? content.trim().split(/\s+/).length : 0;
             const chars = content.length;
             
-            statusLeft.textContent = saveStatus;
+            const fileStatus = currentFile ? 
+                `${currentFile}${hasUnsavedChanges ? ' (unsaved)' : ''}` : 
+                'Untitled';
+            
+            statusLeft.innerHTML = `<span class="${currentFile ? 'current-file' : ''} ${hasUnsavedChanges ? 'unsaved' : ''}">${fileStatus}</span>`;
             statusRight.textContent = `Lines: ${lines} | Words: ${words} | Characters: ${chars}`;
         }
 
-        // Schedule auto-save
-        function scheduleAutoSave() {
-            if (autoSaveTimeout) {
-                clearTimeout(autoSaveTimeout);
-            }
-            autoSaveTimeout = setTimeout(() => {
-                saveContent();
-                saveStatus = 'Auto-saved';
-                updateStatus();
-            }, 2000);
-        }
-
-        // Save content to localStorage
-        function saveContent() {
-            localStorage.setItem('textEditorContent', editor.value);
-            saveStatus = 'Saved';
-            updateStatus();
+        // Set temporary status
+        function setStatus(message) {
+            const originalLeft = statusLeft.innerHTML;
+            statusLeft.textContent = message;
             setTimeout(() => {
-                saveStatus = 'Ready';
-                updateStatus();
-            }, 1000);
+                statusLeft.innerHTML = originalLeft;
+            }, 3000);
         }
 
-        // Load content from localStorage
-        function loadContent() {
-            const saved = localStorage.getItem('textEditorContent');
-            if (saved) {
-                editor.value = saved;
-            }
-        }
-
-        // New file
-        function newFile() {
-            if (confirm('Create new file? Unsaved changes will be lost.')) {
-                editor.value = '';
-                updateLineNumbers();
-                updateStatus();
-                editor.focus();
-            }
-        }
-
-        // Open file
-        function openFile() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.txt,.js,.html,.css,.json,.md';
-            
-            input.onchange = function(e) {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        editor.value = e.target.result;
-                        updateLineNumbers();
-                        updateStatus();
-                        editor.focus();
-                    };
-                    reader.readAsText(file);
-                }
-            };
-            
-            input.click();
-        }
-
-        // Download file
-        function downloadFile() {
-            const content = editor.value;
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'untitled.txt';
-            a.click();
-            window.URL.revokeObjectURL(url);
-        }
-
-        // Add download shortcut
-        document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
-                e.preventDefault();
-                downloadFile();
-            }
-        });
-
-        // Initialize the editor
+        // Initialize
         init();
     </script>
 </body>
