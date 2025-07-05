@@ -9,7 +9,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Directory to store text files
-const FILES_DIR = 'files';
+const FILES_DIR = path.resolve('files');
 
 // Initialize files directory
 const initializeFilesDir = async () => {
@@ -20,6 +20,28 @@ const initializeFilesDir = async () => {
   }
 };
 
+// Helper function to validate and get safe file path
+const getSafeFilePath = (filename) => {
+  // Remove any path traversal attempts
+  const safeName = path.basename(filename);
+  
+  // Add .txt extension if not present
+  const safeFilename = safeName.endsWith('.txt') ? safeName : `${safeName}.txt`;
+  
+  // Create full path
+  const fullPath = path.join(FILES_DIR, safeFilename);
+  
+  // Ensure the resolved path is within FILES_DIR
+  const resolvedPath = path.resolve(fullPath);
+  const resolvedFilesDir = path.resolve(FILES_DIR);
+  
+  // if (!resolvedPath.startsWith(resolvedFilesDir + path.sep) && resolvedPath !== resolvedFilesDir) {
+  //   throw new Error('Invalid file path');
+  // }
+  
+  return { fullPath: resolvedPath, filename: safeFilename };
+};
+
 // Get list of all files
 app.get('/api/files', async (req, res) => {
   try {
@@ -27,7 +49,8 @@ app.get('/api/files', async (req, res) => {
     const fileList = files
       .filter(file => file.endsWith('.txt'))
       .map(file => ({
-        name: file,
+        name: file.replace('.txt', ''), // Remove .txt for display
+        fullName: file, // Keep full name for internal use
         displayName: file.replace('.txt', '')
       }));
     res.json(fileList);
@@ -40,19 +63,15 @@ app.get('/api/files', async (req, res) => {
 // Get file content
 app.get('/api/files/:filename', async (req, res) => {
   try {
-    const filename = req.params.filename;
-    const filePath = path.join(FILES_DIR, filename);
+    const { fullPath } = getSafeFilePath(req.params.filename);
     
-    // Security check - ensure file is within FILES_DIR
-    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
-      return res.status(400).json({ error: 'Invalid file path' });
-    }
-    
-    const content = await fs.readFile(filePath, 'utf8');
+    const content = await fs.readFile(fullPath, 'utf8');
     res.json({ content });
   } catch (error) {
     if (error.code === 'ENOENT') {
       res.status(404).json({ error: 'File not found' });
+    } else if (error.message === 'Invalid file path') {
+      res.status(400).json({ error: 'Invalid file path' });
     } else {
       console.error('Error reading file:', error);
       res.status(500).json({ error: 'Error reading file' });
@@ -63,46 +82,37 @@ app.get('/api/files/:filename', async (req, res) => {
 // Save file content
 app.post('/api/files/:filename', async (req, res) => {
   try {
-    const filename = req.params.filename;
     const { content } = req.body;
+    const { fullPath, filename } = getSafeFilePath(req.params.filename);
     
-    // Ensure filename ends with .txt
-    const safeFilename = filename.endsWith('.txt') ? filename : `${filename}.txt`;
-    const filePath = path.join(FILES_DIR, safeFilename);
-    
-    // Security check - ensure file is within FILES_DIR
-    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
-      return res.status(400).json({ error: 'Invalid file path' });
-    }
-    
-    await fs.writeFile(filePath, content, 'utf8');
+    await fs.writeFile(fullPath, content, 'utf8');
     res.json({ 
       success: true, 
       message: 'File saved successfully',
-      filename: safeFilename
+      filename: filename.replace('.txt', '') // Return filename without extension
     });
   } catch (error) {
-    console.error('Error saving file:', error);
-    res.status(500).json({ error: 'Error saving file' });
+    if (error.message === 'Invalid file path') {
+      res.status(400).json({ error: 'Invalid file path' });
+    } else {
+      console.error('Error saving file:', error);
+      res.status(500).json({ error: 'Error saving file' });
+    }
   }
 });
 
 // Delete file
 app.delete('/api/files/:filename', async (req, res) => {
   try {
-    const filename = req.params.filename;
-    const filePath = path.join(FILES_DIR, filename);
+    const { fullPath } = getSafeFilePath(req.params.filename);
     
-    // Security check - ensure file is within FILES_DIR
-    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
-      return res.status(400).json({ error: 'Invalid file path' });
-    }
-    
-    await fs.unlink(filePath);
+    await fs.unlink(fullPath);
     res.json({ success: true, message: 'File deleted successfully' });
   } catch (error) {
     if (error.code === 'ENOENT') {
       res.status(404).json({ error: 'File not found' });
+    } else if (error.message === 'Invalid file path') {
+      res.status(400).json({ error: 'Invalid file path' });
     } else {
       console.error('Error deleting file:', error);
       res.status(500).json({ error: 'Error deleting file' });
@@ -119,32 +129,29 @@ app.post('/api/files', async (req, res) => {
       return res.status(400).json({ error: 'Filename is required' });
     }
     
-    // Ensure filename ends with .txt
-    const safeFilename = filename.endsWith('.txt') ? filename : `${filename}.txt`;
-    const filePath = path.join(FILES_DIR, safeFilename);
-    
-    // Security check - ensure file is within FILES_DIR
-    if (!filePath.startsWith(path.resolve(FILES_DIR))) {
-      return res.status(400).json({ error: 'Invalid file path' });
-    }
+    const { fullPath, filename: safeFilename } = getSafeFilePath(filename);
     
     // Check if file already exists
     try {
-      await fs.access(filePath);
+      await fs.access(fullPath);
       return res.status(409).json({ error: 'File already exists' });
     } catch (error) {
       // File doesn't exist, which is what we want
     }
     
-    await fs.writeFile(filePath, content, 'utf8');
+    await fs.writeFile(fullPath, content, 'utf8');
     res.json({ 
       success: true, 
       message: 'File created successfully',
-      filename: safeFilename
+      filename: safeFilename.replace('.txt', '') // Return filename without extension
     });
   } catch (error) {
-    console.error('Error creating file:', error);
-    res.status(500).json({ error: 'Error creating file' });
+    if (error.message === 'Invalid file path') {
+      res.status(400).json({ error: 'Invalid file path' });
+    } else {
+      console.error('Error creating file:', error);
+      res.status(500).json({ error: 'Error creating file' });
+    }
   }
 });
 
@@ -157,6 +164,6 @@ app.get('/', (req, res) => {
 initializeFilesDir().then(() => {
   app.listen(PORT, () => {
     console.log(`Text Editor server running on http://localhost:${PORT}`);
-    console.log(`Files will be stored in: ${path.resolve(FILES_DIR)}`);
+    console.log(`Files will be stored in: ${FILES_DIR}`);
   });
 });
