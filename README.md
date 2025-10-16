@@ -1,3 +1,21 @@
+Welcome to `notes-everywhere`
+With every I mean:
+web-app: link to be added
+chrome extension link to be added notes-everywhere
+cli: pip install cli-notes-everywhere  package to be pushed
+
+TODO:
+Android app
+
+Maybe in the comming years:
+IOS App
+
+
+
+
+
+
+
 # Advanced Text Editor
 
 A self-hosted, web-based text editor with timestamped lines, tag-based organization, and comprehensive analytics. Built with Node.js, Express, and vanilla JavaScript.
