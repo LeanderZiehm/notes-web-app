@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Notes Manager",
+  "version": "1.0",
+  "description": "Manage your notes with ease",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://notes.leanderziehm.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Notes Manager"
+  },
+  "icons": {
+    "400": "icon.png"
+
+  }
+}
